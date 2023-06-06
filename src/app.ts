@@ -1,7 +1,9 @@
 import express, { Request, Response } from "express";
+import * as mongoose from "mongoose";
 
-import { userService } from "./services/user.service";
-import { userValidator } from "./validators/user.validator";
+import { configs } from "./configs/config";
+import { IUser } from "./interfaces/user.interface";
+import { User } from "./models/user.model";
 
 const app = express();
 
@@ -12,73 +14,79 @@ app.get("/", (req, res) => {
   res.json("Hello world");
 });
 
-app.get("/users", async (req: Request, res: Response) => {
-  const users = await userService.getUsers();
+app.get(
+  "/users",
+  async (req: Request, res: Response): Promise<Response<IUser[]>> => {
+    try {
+      const users = await User.find().select("-password");
 
-  res.json(users);
-});
-
-app.post("/users", async (req: Request, res: Response) => {
-  const user = req.body;
-
-  const validate = userValidator.validate(user);
-
-  if (validate.error) {
-    res.status(401).json(validate.error.message);
-  } else {
-    const users = await userService.createUser(user);
-
-    res.status(201).json(users);
+      return res.json(users);
+    } catch (e) {
+      console.log(e);
+    }
   }
-});
+);
 
-app.get("/users/:userId", async (req: Request, res: Response) => {
-  const { userId } = req.params;
-
-  const user = await userService.getUserById(userId);
-
-  if (!user) {
-    return res.status(422).json("User with such id does not exist");
+app.post(
+  "/users",
+  async (req: Request, res: Response): Promise<Response<IUser>> => {
+    try {
+      const user = await User.create(req.body);
+      return res.status(201).json(user);
+    } catch (e) {
+      console.log(e);
+    }
   }
+);
 
-  res.json(user);
-});
+app.get(
+  "/users/:userId",
+  async (req: Request, res: Response): Promise<Response<IUser>> => {
+    const { userId } = req.params;
 
-app.put("/users/:userId", async (req: Request, res: Response) => {
-  const { userId } = req.params;
-  const data = req.body;
-
-  const user = await userService.getUserById(userId);
-
-  if (!user) {
-    return res.status(422).json("User with such id does not exist");
+    try {
+      const user = await User.findOne({ _id: userId });
+      return res.json(user);
+    } catch (e) {
+      console.log(e);
+    }
   }
+);
 
-  const validate = userValidator.validate(data);
+app.put(
+  "/users/:userId",
+  async (req: Request, res: Response): Promise<Response<IUser>> => {
+    const { userId } = req.params;
 
-  if (validate.error) {
-    res.status(400).json(validate.error.message);
-  } else {
-    const newUser = await userService.updateUserById(userId, data);
-    res.json(newUser);
+    try {
+      const user = await User.findOneAndUpdate(
+        { _id: userId },
+        { ...req.body },
+        { returnDocument: "after" }
+      );
+
+      return res.json(user);
+    } catch (e) {
+      console.log(e);
+    }
   }
-});
+);
 
-app.delete("/users/:userId", async (req: Request, res: Response) => {
-  const { userId } = req.params;
+app.delete(
+  "/users/:userId",
+  async (req: Request, res: Response): Promise<Response<void>> => {
+    const { userId } = req.params;
 
-  const user = await userService.getUserById(userId);
-
-  if (!user) {
-    return res.status(422).json("User with such id does not exist");
+    try {
+      await User.deleteOne({ _id: userId });
+      return res.sendStatus(204);
+    } catch (e) {
+      console.log(e);
+    }
   }
+);
 
-  await userService.deleteUserById(userId);
-  res.sendStatus(204);
-});
-
-const PORT = 5000;
-
-app.listen(PORT, () => {
-  console.log(`Server is listened on PORT ${PORT}`);
+app.listen(configs.PORT, async () => {
+  await mongoose.connect(configs.MONGO_URL);
+  console.log(`Server is listened on PORT ${configs.PORT}`);
 });
