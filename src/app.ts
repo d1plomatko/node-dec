@@ -1,9 +1,12 @@
-import express, { Request, Response } from "express";
+import express, { NextFunction, Request, Response } from "express";
 import * as mongoose from "mongoose";
 
 import { configs } from "./configs/config";
+import { ApiError } from "./errors/api.error";
+import { IError } from "./interfaces/error.interface";
 import { IUser } from "./interfaces/user.interface";
 import { User } from "./models/user.model";
+import { UserValidator } from "./validators/user.validator";
 
 const app = express();
 
@@ -29,12 +32,22 @@ app.get(
 
 app.post(
   "/users",
-  async (req: Request, res: Response): Promise<Response<IUser>> => {
+  async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<Response<IUser>> => {
     try {
-      const user = await User.create(req.body);
+      const { error, value } = UserValidator.create.validate(req.body);
+
+      if (error) {
+        throw new ApiError(error.message, 400);
+      }
+
+      const user = await User.create(value);
       return res.status(201).json(user);
     } catch (e) {
-      console.log(e);
+      next(e);
     }
   }
 );
@@ -55,19 +68,29 @@ app.get(
 
 app.put(
   "/users/:userId",
-  async (req: Request, res: Response): Promise<Response<IUser>> => {
+  async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<Response<IUser>> => {
     const { userId } = req.params;
 
     try {
+      const { error, value } = UserValidator.update.validate(req.body);
+
+      if (error) {
+        throw new ApiError(error.message, 400);
+      }
+
       const user = await User.findOneAndUpdate(
         { _id: userId },
-        { ...req.body },
+        { ...value },
         { returnDocument: "after" }
       );
 
       return res.json(user);
     } catch (e) {
-      console.log(e);
+      next(e);
     }
   }
 );
@@ -85,6 +108,15 @@ app.delete(
     }
   }
 );
+
+app.use((err: IError, req: Request, res: Response, next: NextFunction) => {
+  const status = err.status || 500;
+
+  return res.status(status).json({
+    message: err.message,
+    status: status,
+  });
+});
 
 app.listen(configs.PORT, async () => {
   await mongoose.connect(configs.MONGO_URL);
